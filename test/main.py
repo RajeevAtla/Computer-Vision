@@ -26,22 +26,31 @@ MAX_STEPS = 10000
 class DQN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(DQN, self).__init__()
-        self.model = nn.Sequential(
+        self.conv = nn.Sequential(
             nn.Conv2d(input_dim[0], 32, kernel_size=8, stride=4),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2),
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, stride=1),
             nn.ReLU(),
+        )
+        
+        # Compute the size of the flattened input to the fully connected layer
+        with torch.no_grad():
+            dummy_input = torch.zeros(1, *input_dim)  # Create a dummy input with the same shape as the input to the network
+            conv_output = self.conv(dummy_input)
+            self.conv_output_size = conv_output.numel()  # Total number of elements in the output
+
+        self.fc = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(64 * 7 * 7, 512),
+            nn.Linear(self.conv_output_size, 512),  # Use computed size
             nn.ReLU(),
             nn.Linear(512, output_dim)
         )
 
     def forward(self, x):
-        return self.model(x / 255.0)  # Normalize pixel values
-
+        x = self.conv(x / 255.0)  # Normalize pixel values
+        return self.fc(x)
 # Replay buffer for experience replay
 class ReplayBuffer:
     def __init__(self, capacity):
@@ -83,11 +92,11 @@ class DQNAgent:
         batch = self.replay_buffer.sample(BATCH_SIZE)
         states, actions, rewards, next_states, dones = zip(*batch)
 
-        states = torch.tensor(np.array(states), dtype=torch.float32).cuda()
-        actions = torch.tensor(actions, dtype=torch.long).unsqueeze(1).cuda()
-        rewards = torch.tensor(rewards, dtype=torch.float32).unsqueeze(1).cuda()
-        next_states = torch.tensor(np.array(next_states), dtype=torch.float32).cuda()
-        dones = torch.tensor(dones, dtype=torch.float32).unsqueeze(1).cuda()
+        states = torch.tensor(np.array(states), dtype=torch.float32)
+        actions = torch.tensor(actions, dtype=torch.long).unsqueeze(1)
+        rewards = torch.tensor(rewards, dtype=torch.float32).unsqueeze(1)
+        next_states = torch.tensor(np.array(next_states), dtype=torch.float32)
+        dones = torch.tensor(dones, dtype=torch.float32).unsqueeze(1)
 
         q_values = self.policy_net(states).gather(1, actions)
         next_q_values = self.target_net(next_states).max(1)[0].unsqueeze(1)
@@ -106,6 +115,7 @@ class DQNAgent:
 def train():
     env = gym.make(ENV_NAME, render_mode="human")
     state_shape = env.observation_space.shape
+    state_shape = (state_shape[2], state_shape[0], state_shape[1])  # Convert (H, W, C) to (C, H, W)
     n_actions = env.action_space.n
     agent = DQNAgent(state_shape, n_actions)
 
