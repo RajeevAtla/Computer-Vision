@@ -26,6 +26,13 @@ MAX_STEPS = 10000
 # Neural Network for the Q-function
 class DQN(nn.Module):
     def __init__(self, input_dim, output_dim):
+        """
+        Initializes the DQN with convolutional layers and fully connected layers.
+
+        Args:
+            input_shape (tuple): Shape of the observation space.
+            n_actions (int): Number of actions in the action space.
+        """
         super(DQN, self).__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(input_dim[0], 32, kernel_size=8, stride=4),
@@ -49,26 +56,71 @@ class DQN(nn.Module):
         )
 
     def forward(self, x):
+        """
+        Forward pass to compute Q-values for each action.
+        Args:
+            x (torch.Tensor): Input state tensor.
+        Returns:
+            torch.Tensor: Q-values for all actions.
+        """
         x = self.conv(x / 255.0)
         return self.fc(x)
 
 # Replay buffer for experience replay
 class ReplayBuffer:
     def __init__(self, capacity):
+        """
+        Initializes the replay buffer.
+        Args:
+            capacity (int): Maximum number of experiences the buffer can hold.
+        """
         self.buffer = deque(maxlen=capacity)
 
     def add(self, state, action, reward, next_state, done):
+        """
+        Adds an experience tuple to the buffer.
+        Args:
+            state (np.ndarray): Current state.
+            action (int): Action taken.
+            reward (float): Reward received.
+            next_state (np.ndarray): Next state after taking the action.
+            done (bool): Whether the episode ended.
+        """
         self.buffer.append((state, action, reward, next_state, done))
 
     def sample(self, batch_size):
+        """
+        Samples a batch of experiences from the buffer.
+
+        Args:
+            batch_size (int): Number of experiences to sample.
+        
+        Returns:
+            tuple: A batch of states, actions, rewards, next_states, and done flags.
+        """
         return random.sample(self.buffer, batch_size)
 
     def size(self):
+        """
+        Returns the current size of the buffer.
+
+        Returns:
+            int: Number of experiences stored.
+        """
         return len(self.buffer)
 
 # Agent class
 class DQNAgent:
     def __init__(self, state_shape, n_actions):
+        """
+        Initializes the DQN agent.
+
+        Args:
+            state_dim (tuple): Shape of the observation space.
+            action_dim (int): Number of actions in the action space.
+            replay_buffer (ReplayBuffer): Replay buffer to store experiences.
+        """
+        
         self.n_actions = n_actions
         self.epsilon = EPSILON_START
         self.policy_net = DQN(state_shape, n_actions)
@@ -79,6 +131,16 @@ class DQNAgent:
         self.replay_buffer = ReplayBuffer(BUFFER_SIZE)
 
     def select_action(self, state):
+        """
+        Selects an action using the epsilon-greedy strategy.
+
+        Args:
+            state (np.ndarray): Current state.
+            epsilon (float): Exploration probability.
+        
+        Returns:
+            int: Selected action.
+        """
         if np.random.rand() < self.epsilon:
             return np.random.randint(self.n_actions)
         else:
@@ -87,6 +149,17 @@ class DQNAgent:
             return torch.argmax(q_values).item()
 
     def train(self):
+        """
+        Trains the policy network using a batch of experiences.
+
+        Args:
+            batch_size (int): Number of experiences to sample for training.
+            gamma (float): Discount factor for future rewards.
+            optimizer (torch.optim.Optimizer): Optimizer for training.
+        
+        Returns:
+            float: Computed loss for the training batch.
+        """
         if self.replay_buffer.size() < BATCH_SIZE:
             return 0  # Return 0 if not enough data to train
 
@@ -125,6 +198,9 @@ class DQNAgent:
         return q_values.squeeze(0).numpy()  # Return as a 1D numpy array
 
     def update_target_net(self):
+        """
+        Updates the target network by copying weights from the policy network.
+        """
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
 
@@ -174,9 +250,11 @@ def compute_custom_rewards(state, reward, done, agent_type, info=None, last_acti
 class FrameSkip(gym.Wrapper):
     def __init__(self, env, skip=4):
         """
-        Return only every `skip`-th frame.
-        :param env: Environment to wrap.
-        :param skip: Number of frames to skip.
+        Wraps the environment to skip frames for faster training.
+
+        Args:
+            env (gym.Env): Original gym environment.
+            skip (int): Number of frames to skip.
         """
         super().__init__(env)
         self.skip = skip
@@ -220,6 +298,19 @@ def is_collision(state, reward, done):
     return False
 
 def train_with_metrics():
+    """
+    Trains the DQN agent using the environment and custom rewards.
+
+    Args:
+        agent (DQNAgent): DQN agent to be trained.
+        env (gym.Env): Environment for training.
+        episodes (int): Number of episodes to train.
+        max_steps (int): Maximum steps per episode.
+        gamma (float): Discount factor for future rewards.
+        epsilon_decay (float): Rate of epsilon decay.
+        replay_buffer (ReplayBuffer): Replay buffer for experience replay.
+    """
+    
     env = gym.make(ENV_NAME, render_mode=None)
     env = FrameSkip(env, skip=4)
     state_shape = env.observation_space.shape
